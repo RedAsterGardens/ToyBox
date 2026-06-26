@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ハロウィンジャー試作</title>
+<style>
+  :root {
+    --bg:#0b0e13; --panel:#161b24; --line:#2a3340;
+    --accent:#4fc3f7; --text:#e6edf3; --sub:#8b97a7; --warn:#ffd54f;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin:0; background:var(--bg); color:var(--text);
+    font-family:"Segoe UI","Hiragino Kaku Gothic ProN",Meiryo,sans-serif;
+    display:flex; flex-direction:column; align-items:center; padding:18px 12px 48px;
+  }
+  h1 { font-size:18px; margin:0 0 2px; }
+  .tagline { color:var(--sub); font-size:13px; margin:0 0 12px; line-height:1.5; }
+  .wrap { width:100%; max-width:760px; }
+
+  .stagebox { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:10px; position:relative; }
+  canvas { width:100%; height:auto; display:block; border-radius:6px; background:#0d1119; }
+
+  /* ★ 多局面（ビート）進行バー */
+  #beatbar { display:flex; gap:4px; margin:8px 0 4px; }
+  .beatseg {
+    flex:1; display:flex; flex-direction:column; align-items:center; gap:1px;
+    padding:5px 4px; border-radius:6px; border:1px solid var(--line); background:#161d27;
+    font-size:11px; color:var(--sub); transition:background .12s, border-color .12s, color .12s;
+  }
+  .beatseg .bn { font-size:10px; opacity:.8; }
+  .beatseg .bt { font-weight:bold; }
+  .beatseg.k-travel { border-left:3px solid #ffd54f; }
+  .beatseg.k-ghost  { border-left:3px solid #ff8aab; }
+  .beatseg.done { background:#16241b; color:#9ccc65; border-color:#36502f; }
+  .beatseg.on   { background:#1b3a4a; color:#dff4fb; border-color:#2d7d96; transform:translateY(-2px); }
+  /* ★ 局面情報（道中メッセージ＋手がかり） */
+  #beatinfo {
+    font-size:12.5px; color:var(--text); background:#11151c; border:1px solid var(--line);
+    border-radius:7px; padding:7px 10px; margin:2px 0 4px; line-height:1.5; min-height:20px;
+  }
+  #beatinfo .clue { color:#c8b6ff; }
+
+  /* ★ ヒーローノート（フカシギ式ヒント機構） */
+  #heronote {
+    margin:8px 0 2px; background:#15120d; border:1px solid #5a4a2a; border-radius:9px; padding:9px 11px;
+  }
+  .notettl { font-size:13px; font-weight:bold; color:#ffd98a; margin-bottom:7px; }
+  .notettl .notesub { font-weight:normal; color:var(--sub); font-size:11px; }
+  .notecard {
+    background:#11151c; border:1px solid var(--line); border-radius:8px; padding:8px 10px; margin:6px 0;
+    border-left:3px solid #ffb74d;
+  }
+  .notecard.won { border-left-color:#ff8aab; background:#1a1118; }
+  .noteghost { font-size:12.5px; font-weight:bold; color:#e6edf3; margin-bottom:3px; }
+  .notewon { color:#ff8aab; font-size:11.5px; font-weight:normal; }
+  .noteentry { font-size:12px; color:#c8b6ff; margin:0 0 5px; line-height:1.5; }
+  .notefacts { margin:4px 0; }
+  .notefact { font-size:12.5px; color:var(--text); line-height:1.6; padding-left:2px; }
+  .noteempty { font-size:12px; color:var(--sub); font-style:italic; }
+  .noteprog { font-size:12px; color:#ffd98a; margin-top:5px; }
+  .noteprog .dots { letter-spacing:2px; color:#ffb74d; margin-right:5px; }
+  .notehyp {
+    font-size:12.5px; color:#fff3c4; background:#2a2410; border:1px solid #6a5a2a; border-radius:7px;
+    padding:7px 9px; margin-top:6px; line-height:1.6; font-weight:bold;
+  }
+  /* ★ 記録トリガーの明確化（「何をすれば記録が増えるか」を常時提示） */
+  .noteguide {
+    font-size:11.5px; color:#dfe8c8; background:#1b2410; border:1px solid #46591f; border-radius:7px;
+    padding:6px 9px; margin:0 0 7px; line-height:1.6;
+  }
+  .noteguide b { color:#cde88a; }
+  /* ★ 記録が追加された事実のハイライト（「今のが記録された」と気づける） */
+  .notefact.fresh {
+    background:#2b3a16; border-radius:5px; padding:2px 6px; margin:2px 0;
+    box-shadow:0 0 0 1px #6fae35 inset; animation:freshpop 1.1s ease-out 1;
+  }
+  .notefact .newtag {
+    display:inline-block; font-size:10px; font-weight:bold; color:#0d1119; background:#9ccc65;
+    border-radius:4px; padding:0 4px; margin-right:4px; vertical-align:1px;
+  }
+  @keyframes freshpop {
+    0% { background:#6fae35; transform:translateX(6px); }
+    100% { background:#2b3a16; transform:translateX(0); }
+  }
+  /* ★ 「▶再生で記録できる」誘導 */
+  #recordcue {
+    display:none; font-size:12px; color:#0d1119; font-weight:bold; line-height:1.5;
+    background:linear-gradient(90deg,#ffd54f,#ffb74d); border-radius:7px; padding:6px 10px; margin:8px 0 2px;
+  }
+  /* ★ 記録追加トースト（記録の瞬間の演出） */
+  #notetoast {
+    position:absolute; left:50%; top:14px; transform:translate(-50%,-12px);
+    background:#1b3a1b; color:#cffdd9; border:1px solid #6fae35; border-radius:20px;
+    padding:7px 16px; font-size:14px; font-weight:bold; z-index:6;
+    opacity:0; pointer-events:none; transition:opacity .18s, transform .18s;
+    box-shadow:0 6px 22px rgba(0,0,0,0.5);
+  }
+  #notetoast.show { opacity:1; transform:translate(-50%,0); }
+  /* ★ 記録できる時の ▶ ボタンの点滅（行為→記録のリンクを促す） */
+  #play.cue { animation:playglow 1.0s ease-in-out infinite; }
+  @keyframes playglow {
+    0%,100% { box-shadow:0 0 0 0 rgba(255,213,79,0.0); border-color:#2d7d96; }
+    50%     { box-shadow:0 0 0 3px rgba(255,213,79,0.55); border-color:#ffd54f; }
+  }
+
+  #banner { font-size:14px; font-weight:bold; margin:10px 2px 4px; min-height:20px; }
+  #hint   { font-size:12px; color:var(--warn); min-height:16px; margin:0 2px 8px; line-height:1.4; }
+
+  .timeline-row { display:flex; align-items:center; gap:10px; margin:4px 0 10px; }
+  #timeline { flex:1; accent-color:var(--accent); }
+  #clock { font-variant-numeric:tabular-nums; color:var(--sub); font-size:13px; min-width:188px; text-align:right; }
+
+  .planlabel { font-size:12px; color:var(--sub); margin:6px 2px 4px; }
+  #blocks {
+    display:flex; flex-wrap:wrap; gap:6px; min-height:48px; padding:6px;
+    background:#11151c; border:1px dashed var(--line); border-radius:8px; margin-bottom:4px;
+  }
+  #blocks .empty { color:var(--sub); font-size:12px; align-self:center; padding:4px 6px; }
+  .chip {
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    min-width:74px; padding:5px 8px; border-radius:7px; cursor:pointer; user-select:none;
+    border:1px solid var(--line); background:#1f2733; transition:transform .08s, box-shadow .08s;
+  }
+  .chip .lbl { font-size:13px; font-weight:bold; }
+  .chip .val { font-size:12px; color:var(--text); font-variant-numeric:tabular-nums; }
+  .chip .dst { font-size:10px; color:var(--sub); margin-top:1px; }
+  .chip.sel { box-shadow:0 0 0 2px var(--accent); border-color:var(--accent); }
+  .chip.active { transform:translateY(-3px); background:#2a3a2c; border-color:#9ccc65; }
+  .chip.t-right  { border-left:4px solid #4fc3f7; }
+  .chip.t-left   { border-left:4px solid #b39ddb; }
+  .chip.t-jump   { border-left:4px solid #ffd54f; }
+  .chip.t-crouch { border-left:4px solid #ff8aab; }
+  .chip.t-wait   { border-left:4px solid #80cbc4; }
+
+  .controls { display:flex; flex-wrap:wrap; gap:7px; margin-top:8px; }
+  .controls .sep { width:100%; height:0; }
+  button {
+    background:#1f2733; color:var(--text); border:1px solid var(--line); border-radius:7px;
+    padding:7px 11px; font-size:13px; cursor:pointer; transition:background .12s;
+  }
+  button:hover { background:#27313f; }
+  button.primary { background:#1b4d5e; border-color:#2d7d96; }
+  button.primary:hover { background:#216173; }
+  button.add { background:#222c25; border-color:#3a4c3e; }
+  button.add:hover { background:#2c3a30; }
+  button:disabled { opacity:.4; cursor:default; }
+
+  /* ★ ステージ前会話モーダル */
+  #intromodal {
+    position:absolute; inset:0; display:none; align-items:center; justify-content:center;
+    background:rgba(8,11,16,0.78); border-radius:10px; padding:16px; z-index:5;
+  }
+  #intromodal.show { display:flex; }
+  .introcard {
+    width:100%; max-width:560px; background:#141b26; border:1px solid #2d7d96; border-radius:12px;
+    padding:16px 18px; box-shadow:0 8px 30px rgba(0,0,0,0.5);
+  }
+  #introtitle { font-size:15px; font-weight:bold; color:#dff4fb; margin:0 0 10px; }
+  .introline { display:flex; gap:10px; margin:7px 0; font-size:13.5px; line-height:1.55; }
+  .introline .who { color:#ffd54f; min-width:84px; font-weight:bold; flex-shrink:0; }
+  .introline .tx  { color:var(--text); }
+  .introtip { margin-top:12px; padding-top:10px; border-top:1px dashed var(--line);
+              color:var(--sub); font-size:11.5px; line-height:1.6; }
+  #introstart { margin-top:14px; width:100%; background:#1b4d5e; border-color:#2d7d96; font-weight:bold; padding:9px; }
+  #introstart:hover { background:#216173; }
+
+  /* ★ 直接ドライブ操作パッド */
+  #drivepad { display:none; background:#171018; border:1px solid #5a2a3a; border-radius:9px; padding:10px 12px; margin-top:8px; }
+  .drivehelp { font-size:12.5px; color:var(--text); line-height:1.6; margin-bottom:8px; }
+  .drivehelp b { color:#ff8aab; }
+  .drivekeys { display:flex; flex-wrap:wrap; gap:7px; align-items:center; }
+  .drv { background:#241820; color:var(--text); border:1px solid #6a3346; border-radius:7px;
+         padding:8px 12px; font-size:13.5px; cursor:pointer; font-weight:bold; user-select:none; touch-action:none;
+         transition:background .1s, transform .06s; }
+  .drv:hover { background:#321f29; }
+  .drv:active { background:#4a2738; transform:translateY(1px); }
+  #undoDrive { background:#1f2733; color:var(--text); border:1px solid var(--line); border-radius:7px;
+               padding:8px 12px; font-size:13px; cursor:pointer; }
+  #undoDrive:hover { background:#27313f; }
+  .drivekeys kbd { font-family:ui-monospace,Menlo,Consolas,monospace; font-size:10.5px; color:#ffb3c8;
+                   background:#0d0a0d; border:1px solid #6a3346; border-radius:4px; padding:1px 5px; margin-left:5px; }
+  .drivenote { font-size:11.5px; color:var(--sub); margin-top:8px; line-height:1.6; }
+  .drivenote b { color:var(--text); }
+
+  .legend { color:var(--sub); font-size:12px; margin-top:14px; line-height:1.7; }
+  .legend b { color:var(--text); }
+  details { margin-top:12px; background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:8px 12px; }
+  summary { cursor:pointer; font-size:13px; color:var(--accent); }
+  details ol { margin:8px 0; padding-left:20px; font-size:13px; color:var(--sub); line-height:1.8; }
+  details ol b { color:var(--text); }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>🎃 ハロウィンジャー試作</h1>
+
+    <div class="stagebox">
+      <canvas id="stage"></canvas>
+
+      <!-- ★ 記録追加トースト（記録の瞬間の演出） -->
+      <div id="notetoast"></div>
+
+      <!-- ★ 多局面（ビート）進行バー＋局面情報 -->
+      <div id="beatbar"></div>
+      <div id="beatinfo"></div>
+
+      <!-- ★ ヒーローノート（入口＋自動記録の事実＋3つで仮説解放／ギミック由来の発見も記録） -->
+      <div id="heronote"></div>
+
+      <!-- ★ 「いまの計画を▶再生で記録できる」誘導（記録トリガーの明確化） -->
+      <div id="recordcue"></div>
+
+      <div id="banner"></div>
+      <div id="hint"></div>
+
+      <div class="timeline-row">
+        <input type="range" id="timeline">
+        <span id="clock">t = 0.0s ／ 主人公 1マス目</span>
+      </div>
+
+      <div class="planlabel">計画（左から順に実行。多局面は1本の長い計画で局面を順に攻略。方向キー/WASDで動かした軌跡がここに記録される）</div>
+      <div id="blocks"></div>
+
+      <!-- 直接ドライブ式の操作パッド（方向キー/WASDで動かす＝録画的に計画へ記録） -->
+      <div id="drivepad">
+        <div class="drivehelp">🎮 <b>方向キー / WASD</b> で主人公を動かす＝<b>計画に記録（録画）</b>。<b>押しっぱなしで連続移動</b>（1マスずつ自動で量子化）。
+          <b>動かす＝記録であって即実行ではない</b>。記録した軌跡は上のタイムラインで先読みでき、<b>▶ 再生</b>で計画通り実行（先読み=再生は必ず一致）。</div>
+        <div class="drivekeys">
+          <button class="drv" data-drive="left"   data-rep="1">← 左 <kbd>←/A</kbd></button>
+          <button class="drv" data-drive="right"  data-rep="1">→ 右 <kbd>→/D</kbd></button>
+          <button class="drv" data-drive="jump"   data-rep="0">⤴ ジャンプ <kbd>↑/W/Space</kbd></button>
+          <button class="drv" data-drive="crouch" data-rep="1">⤵ しゃがむ <kbd>↓/S</kbd></button>
+          <button class="drv" data-drive="wait"   data-rep="1">… 待つ <kbd>Z</kbd></button>
+          <div class="sep"></div>
+          <button id="undoDrive">⟲ ひとつ戻す（録り直し）<kbd>Backspace</kbd></button>
+        </div>
+        <div class="drivenote">語彙は<b>5種</b>（→/←/ジャンプ/しゃがむ/待つ）。連続移動も内部は<b>固定マス1マス単位</b>に量子化＝<b>決定論</b>（先読み=再生は必ず一致）。録り直しは Backspace でひとつ戻す。</div>
+      </div>
+
+      <!-- プレイ操作 -->
+      <div class="controls">
+        <button id="play" class="primary">▶ 再生</button>
+        <button id="pause">⏸ 一時停止</button>
+        <button id="reset">⟲ 巻き戻し</button>
+        <button id="clear">全消去</button>
+        <button id="example">お手本をなぞる</button>
+        <button id="replay">会話をもう一度</button>
+      </div>
+
+      <!-- ★ ステージ前会話モーダル（画面提示） -->
+      <div id="intromodal">
+        <div class="introcard">
+          <div id="introtitle"></div>
+          <div id="introbody"></div>
+          <button id="introstart">▶ このステージをはじめる</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="legend">
+      <b>主人公</b>＝青い子（おおよそ<b>1マス</b>の大きさ。今いるマスが青く光る）。<b>お化け</b>＝浮いている子（名前が出る）。<br>
+      お化けの<b>色と仕草</b>で気持ちを読む：
+      <span style="color:#5c6bc0">青く震える=こわがり</span> ／
+      <span style="color:#b39ddb">紫で目を逸らす=警戒</span> ／
+      <span style="color:#ffd180">気にし始める=興味</span> ／
+      <span style="color:#ff8aab">桃色で寄ってくる=安心</span> ／
+      <span style="color:#78909c">灰色で固まる=心を閉ざした</span>。
+      <b>数値ゲージは出さない。</b><br>
+      <b>📓 ヒーローノート：</b>クリア方法は<b>教えてもらえない</b>。💭<b>入口</b>（お化けの気持ち）だけが示され、
+      動かして観察するたび<b>事実が自動記録</b>される（「うれしそう／いやがってる」等＝答えは直書きしない）。
+      <b>事実が3つ</b>たまると🔎<b>仮説</b>（「〇〇かも？」）がひらめく。これを読んで<b>推理</b>する。<br>
+      <b>📝 記録のしかた：</b>いろいろ動かして<b>▶を最後まで再生</b>するたびに、観察した事実が<b>ノートに増える</b>。
+      増えた瞬間は <b>📝NEW</b> で光り、<b>「📝＋N件 記録した！」</b>と表示される（音も鳴る）。計画を変えると ▶ボタンが点滅して<b>「記録できるよ」</b>と知らせる。<br>
+      <b>🌿 環境ギミック：</b><b>🌿物陰</b>でしゃがむと視線を切って<b>過敏な子の眼前でも近づける</b>／
+      <b>🍎思い出の品</b>のうち“好きだった物”のそばでしゃがむと<b>早く心を開く</b>。どちらの反応も<b>ノートに事実として記録</b>され、
+      「<b>隠れると近づけるのか</b>」「<b>どの品が効くのか</b>」を推理する材料になる（正解の場所・品名は教えない）。<br>
+      <b>救済：</b>困ったら「お手本をなぞる」で<b>必ず解ける</b>（総当たり救済）。逆に入口＋ノートが読めれば<b>推理で早解き</b>も可。<br>
+      <b>多局面：</b>★のステージは1本の計画で複数の局面（渡る／お化けと向き合う）を順に攻略。上の<b>進行バー</b>で今どの局面かが分かる。
+      <b>遊び幅：</b>「ピタリ最適」でなくてもクリアできる。ただし<b>立って詰め寄り続ける</b>と失敗する。
+      <b>数値ゲージは出さない。</b>
+    </div>
+
+    <details open>
+      <summary>遊び方（観察して推理する）— はじめての方へ</summary>
+      <ol>
+        <li><b>★やり方は教えてもらえない：</b>各お化けの<b>クリア条件は明示されない</b>。会話で示されるのは
+            💭<b>入口</b>（この子の<b>気持ち</b>＝「近づかれるのが こわい」「ずっと ひとりで さみしい」等）だけ。
+            <b>何をすれば心を開くかは、自分で観察して推理する。</b></li>
+        <li><b>★動かして観察する：</b><b>方向キー/WASD</b>で主人公を動かすと、その軌跡が計画に記録される（録画＝即実行ではない）。
+            ▶で再生すると、お化けが<b>どう反応したか</b>が <b>📓 ヒーローノート</b>に<b>事実として自動記録</b>される
+            （「うれしそう／いやがってる／後ずさった」等＝<b>答えは直書きしない</b>）。</li>
+        <li><b>★推理する：</b>ノートの事実を読み比べる。例えば「はなれてしゃがむと安心」「近づくと後ずさる」が並べば
+            <b>“この子は距離をとってほしい”</b>と推理できる。逆に「そばでしゃがむと うれしそう」なら<b>“近くで寄り添う”</b>子。
+            <b>事実が3つ</b>たまると🔎<b>仮説</b>（「〇〇かも？」）がひらめいて推理を後押し（断定はしない）。</li>
+        <li><b>★📝記録のしかた：</b>「何をすれば記録が増えるの？」——答えは<b>「動かして ▶を最後まで再生する」</b>。
+            再生しきるたびに、その試行で観察したことが事実として増える。<b>増えた事実は 📝NEW で光り・トーストと音で知らせる</b>。
+            計画を変えると ▶ が点滅して<b>「いまの計画を記録できる」</b>と教えてくれる。<b>ちがう動きほど、ちがう発見</b>。</li>
+        <li><b>★🌿環境ギミック：</b><b>🌿物陰</b>でしゃがむと視線を切って、過敏な子の眼前でも<b>こわがらせずに近づける</b>。
+            <b>🍎思い出の品</b>は複数あり、“好きだった物”のそばでしゃがむと<b>早く心を開く</b>（効いてる時は品が<b>♪</b>と光る）。
+            どれが効くか・隠れると近づけるかは<b>会話のヒント＋ノートの事実から推理</b>（正解は教えない）。</li>
+        <li><b>★救済と早解き：</b>困ったら<b>「お手本をなぞる」</b>で<b>必ずクリアできる</b>（総当たり救済＝詰まない）。
+            逆に入口＋ノートを読んで推理が立てば、<b>総当たり前に少ない試行で早解き</b>もできる。</li>
+        <li><b>計画／到達点：</b><b>→/← は1回=1マス固定</b>。記録したブロックをクリックで選ぶと床のマス目に<b>「ここまで行く」</b>が出る。
+            <b>多局面のステージは1本の長い計画</b>で「渡る→お化けА→渡る→お化けВ」を順に組む。</li>
+        <li><b>先読み／進行バー：</b>タイムラインを動かすと未来の<b>主人公のマス位置・お化けの反応・今の局面</b>が見える。
+            上の進行バーで<b>今どの局面か</b>（済＝緑／今＝水色）が分かる。</li>
+        <li><b>穴：</b>歩いては渡れない（→が手前で「詰まる」）。<b>ジャンプ</b>で越える。</li>
+        <li><b>巻き戻し再計画：</b>つまずいたら <b>⟲</b> で巻き戻して計画を組み直す。Backspaceで<b>ひとつ戻して録り直し</b>。
+            <b>「会話をもう一度」</b>で入口を再確認。</li>
+      </ol>
+    </details>
+  </div>
+
+  <!-- 外部依存なし。sim.js(決定論コア＋環境ギミック層) → note.js(ヒーローノート＝ヒント機構) → game.js(描画/UI) の順で読み込む -->
+  <script src="sim.js"></script>
+  <script src="note.js"></script>
+  <script src="game.js"></script>
+</body>
+</html>
